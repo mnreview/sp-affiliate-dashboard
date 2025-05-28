@@ -1,7 +1,8 @@
-# 📁 app.py (เพิ่ม dropdown filter กรองตาม Sub_id2 + ช่องสรุปด้านบน)
+# 📁 app.py (เพิ่ม dropdown filter กรองตาม Sub_id2 + ช่องสรุปด้านบน + กรองตามวันที่ + กรอง Validity)
 
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Affiliate Profit Dashboard", layout="wide")
 st.title("📊 Affiliate Profit Dashboard")
@@ -57,6 +58,82 @@ df_shopee = df_lazada = df_ads = summary = pd.DataFrame()
 if commission_file:
     df_shopee = read_file(commission_file)
     df_shopee = df_shopee.dropna(subset=['Sub_id4', 'คอมมิชชั่นสินค้าโดยรวม(฿)', 'รหัสการสั่งซื้อ'])
+
+# ===================== Lazada =====================
+if lzd_file:
+    df_lazada = read_file(lzd_file)
+    df_lazada['Sub_id4'] = df_lazada['Sub ID 3'].fillna(df_lazada['Sub ID 1'])
+    df_lazada = df_lazada.dropna(subset=['Sub_id4', 'Payout'])
+    df_lazada = df_lazada[df_lazada['Sub_id4'] != 'paris']
+
+# ===================== Ads Data =====================
+if ads_file:
+    df_ads = read_file(ads_file)
+    df_ads = df_ads.dropna(subset=['Ad name', 'Amount spent (THB)', 'Unique link clicks'])
+
+# ===================== FILTER OPTIONS SECTION =====================
+st.markdown("### 🔍 Filter Options")
+
+col_filter1, col_filter2 = st.columns(2)
+
+# Platform filter
+with col_filter1:
+    shopee_platforms = df_shopee['Sub_id2'].dropna().unique().tolist() if not df_shopee.empty else []
+    lazada_platforms = df_lazada['Sub ID 2'].dropna().unique().tolist() if not df_lazada.empty else []
+    platform_options = list(set(shopee_platforms + lazada_platforms))
+    selected_platform = st.selectbox("🔎 กรองตามแพลตฟอร์ม (Sub_id2):", ['ทั้งหมด'] + platform_options)
+
+# Validity filter (Lazada only)
+with col_filter2:
+    if not df_lazada.empty and 'Validity' in df_lazada.columns:
+        validity_options = df_lazada['Validity'].dropna().unique().tolist()
+        selected_validity = st.selectbox("✅ กรอง Validity (Lazada):", ['ทั้งหมด'] + validity_options)
+    else:
+        selected_validity = 'ทั้งหมด'
+        st.selectbox("✅ กรอง Validity (Lazada):", ['ทั้งหมด'], disabled=True, help="ไม่มีข้อมูล Lazada หรือไม่มีคอลัมน์ Validity")
+
+# Date filter section
+st.markdown("#### 📅 Date Filter")
+use_date_filter = st.checkbox("🔍 กรองตามวันที่", value=False)
+
+date_start = date_end = None
+if use_date_filter:
+    col_date1, col_date2 = st.columns(2)
+    
+    with col_date1:
+        # กำหนดค่า default เป็น 30 วันย้อนหลัง
+        default_end = datetime.now().date()
+        default_start = default_end - timedelta(days=30)
+        
+        date_start = st.date_input(
+            "📅 วันที่เริ่มต้น:", 
+            value=default_start,
+            help="เลือกวันที่เริ่มต้นสำหรับการกรองข้อมูล"
+        )
+    
+    with col_date2:
+        date_end = st.date_input(
+            "📅 วันที่สิ้นสุด:", 
+            value=default_end,
+            help="เลือกวันที่สิ้นสุดสำหรับการกรองข้อมูล"
+        )
+    
+    # ตรวจสอบว่าวันที่เริ่มต้นไม่เกินวันที่สิ้นสุด
+    if date_start > date_end:
+        st.error("⚠️ วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด")
+        date_start = date_end
+
+# ===================== APPLY FILTERS =====================
+# กรองตามวันที่สำหรับ Shopee
+if not df_shopee.empty:
+    if use_date_filter and date_start and date_end:
+        if 'เวลาที่สั่งซื้อ' in df_shopee.columns:
+            df_shopee['เวลาที่สั่งซื้อ'] = pd.to_datetime(df_shopee['เวลาที่สั่งซื้อ'], errors='coerce')
+            df_shopee = df_shopee[
+                (df_shopee['เวลาที่สั่งซื้อ'].dt.date >= date_start) & 
+                (df_shopee['เวลาที่สั่งซื้อ'].dt.date <= date_end)
+            ]
+    
     df_shopee_grouped = df_shopee.groupby('Sub_id4').agg({
         'คอมมิชชั่นสินค้าโดยรวม(฿)': 'sum',
         'รหัสการสั่งซื้อ': 'nunique'
@@ -67,12 +144,21 @@ if commission_file:
 else:
     df_shopee_grouped = pd.DataFrame(columns=['Sub_id4', 'Shopee Com', 'Order Count'])
 
-# ===================== Lazada =====================
-if lzd_file:
-    df_lazada = read_file(lzd_file)
-    df_lazada['Sub_id4'] = df_lazada['Sub ID 3'].fillna(df_lazada['Sub ID 1'])
-    df_lazada = df_lazada.dropna(subset=['Sub_id4', 'Payout'])
-    df_lazada = df_lazada[df_lazada['Sub_id4'] != 'paris']
+# กรองตามวันที่และ Validity สำหรับ Lazada
+if not df_lazada.empty:
+    # กรองตาม Validity
+    if selected_validity != 'ทั้งหมด':
+        df_lazada = df_lazada[df_lazada['Validity'] == selected_validity]
+    
+    # กรองตามวันที่
+    if use_date_filter and date_start and date_end:
+        if 'Conversion Time' in df_lazada.columns:
+            df_lazada['Conversion Time'] = pd.to_datetime(df_lazada['Conversion Time'], errors='coerce')
+            df_lazada = df_lazada[
+                (df_lazada['Conversion Time'].dt.date >= date_start) & 
+                (df_lazada['Conversion Time'].dt.date <= date_end)
+            ]
+    
     df_lazada_grouped = df_lazada.groupby('Sub_id4').agg({
         'Payout': 'sum',
         'Order Amount': 'sum'
@@ -82,6 +168,16 @@ if lzd_file:
     })
 else:
     df_lazada_grouped = pd.DataFrame(columns=['Sub_id4', 'Lazada Com', 'LZD Order Amount'])
+
+# กรองตามวันที่สำหรับ Ads
+if not df_ads.empty:
+    if use_date_filter and date_start and date_end:
+        if 'Day' in df_ads.columns:
+            df_ads['Day'] = pd.to_datetime(df_ads['Day'], errors='coerce')
+            df_ads = df_ads[
+                (df_ads['Day'].dt.date >= date_start) & 
+                (df_ads['Day'].dt.date <= date_end)
+            ]
 
 # ===================== Merge Shopee + Lazada =====================
 if not df_shopee_grouped.empty and not df_lazada_grouped.empty:
@@ -99,9 +195,7 @@ elif not df_lazada_grouped.empty:
 if not summary.empty:
     summary['Total Com'] = summary.get('Shopee Com', 0) + summary.get('Lazada Com', 0)
 
-    if ads_file:
-        df_ads = read_file(ads_file)
-        df_ads = df_ads.dropna(subset=['Ad name', 'Amount spent (THB)', 'Unique link clicks'])
+    if not df_ads.empty:
         ad_costs, clicks = [], []
         for sub_id in summary['Sub_id4']:
             matched = df_ads[df_ads['Ad name'].str.contains(sub_id, na=False)]
@@ -119,12 +213,19 @@ if not summary.empty:
     summary['Cost Per Order(Shopee)'] = summary['Ad Cost'] / summary['Order Count'].replace(0, pd.NA)
     summary['Amount Per AdCost(LZD)'] = summary['LZD Order Amount'] / summary['Ad Cost'].replace(0, pd.NA)
 
-    # ===== กรอง Sub_id2 =====
-    shopee_platforms = df_shopee['Sub_id2'].dropna().unique().tolist() if not df_shopee.empty else []
-    lazada_platforms = df_lazada['Sub ID 2'].dropna().unique().tolist() if not df_lazada.empty else []
-    platform_options = list(set(shopee_platforms + lazada_platforms))
-    selected_platform = st.selectbox("🔎 กรองตามแพลตฟอร์ม (Sub_id2):", ['ทั้งหมด'] + platform_options)
+    # ===== แสดงข่วงวันที่และตัวกรองที่เลือก =====
+    filter_info = []
+    if use_date_filter and date_start and date_end:
+        filter_info.append(f"📅 ช่วงวันที่: {date_start.strftime('%d/%m/%Y')} ถึง {date_end.strftime('%d/%m/%Y')}")
+    if selected_platform != 'ทั้งหมด':
+        filter_info.append(f"🔎 แพลตฟอร์ม: {selected_platform}")
+    if selected_validity != 'ทั้งหมด':
+        filter_info.append(f"✅ Validity: {selected_validity}")
+    
+    if filter_info:
+        st.info(" | ".join(filter_info))
 
+    # ===== กรอง Sub_id2 =====
     if selected_platform != 'ทั้งหมด':
         shopee_match = df_shopee[df_shopee['Sub_id2'] == selected_platform]['Sub_id4'].unique() if not df_shopee.empty else []
         lazada_match = df_lazada[df_lazada['Sub ID 2'] == selected_platform]['Sub_id4'].unique() if not df_lazada.empty else []
@@ -278,61 +379,94 @@ if not summary.empty:
         use_container_width=True,
         hide_index=True
     )
+
     # ===================== กราฟรายวัน: Ad Cost, Shopee Com, Lazada Com, Profit =====================
-st.markdown("### 📈 กราฟรายวัน: Ad Cost, Total Commission และ Profit")
+    st.markdown("### 📈 กราฟรายวัน: Ad Cost, Total Commission และ Profit")
 
-try:
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib.pyplot as plt
 
-    # เตรียมข้อมูล Ads รายวัน
-    if not df_ads.empty:
-        df_ads['Day'] = pd.to_datetime(df_ads['Day'], errors='coerce')
-        ads_daily = df_ads.groupby('Day').agg({'Amount spent (THB)': 'sum'}).reset_index()
-        ads_daily.rename(columns={'Day': 'Date', 'Amount spent (THB)': 'Ad Cost'}, inplace=True)
-    else:
-        ads_daily = pd.DataFrame(columns=['Date', 'Ad Cost'])
+        # เตรียมข้อมูล Ads รายวัน
+        if not df_ads.empty:
+            df_ads['Day'] = pd.to_datetime(df_ads['Day'], errors='coerce')
+            ads_daily = df_ads.groupby('Day').agg({'Amount spent (THB)': 'sum'}).reset_index()
+            ads_daily.rename(columns={'Day': 'Date', 'Amount spent (THB)': 'Ad Cost'}, inplace=True)
+        else:
+            ads_daily = pd.DataFrame(columns=['Date', 'Ad Cost'])
 
-    # เตรียมข้อมูล Shopee รายวัน
-    if not df_shopee.empty:
-        df_shopee['เวลาที่สั่งซื้อ'] = pd.to_datetime(df_shopee['เวลาที่สั่งซื้อ'], errors='coerce')
-        shopee_daily = df_shopee.groupby(df_shopee['เวลาที่สั่งซื้อ'].dt.date).agg({'คอมมิชชั่นสินค้าโดยรวม(฿)': 'sum'}).reset_index()
-        shopee_daily.rename(columns={'เวลาที่สั่งซื้อ': 'Date', 'คอมมิชชั่นสินค้าโดยรวม(฿)': 'Shopee Com'}, inplace=True)
-        shopee_daily['Date'] = pd.to_datetime(shopee_daily['Date'])
-    else:
-        shopee_daily = pd.DataFrame(columns=['Date', 'Shopee Com'])
+        # เตรียมข้อมูล Shopee รายวัน
+        if not df_shopee.empty:
+            df_shopee['เวลาที่สั่งซื้อ'] = pd.to_datetime(df_shopee['เวลาที่สั่งซื้อ'], errors='coerce')
+            shopee_daily = df_shopee.groupby(df_shopee['เวลาที่สั่งซื้อ'].dt.date).agg({'คอมมิชชั่นสินค้าโดยรวม(฿)': 'sum'}).reset_index()
+            shopee_daily.rename(columns={'เวลาที่สั่งซื้อ': 'Date', 'คอมมิชชั่นสินค้าโดยรวม(฿)': 'Shopee Com'}, inplace=True)
+            shopee_daily['Date'] = pd.to_datetime(shopee_daily['Date'])
+        else:
+            shopee_daily = pd.DataFrame(columns=['Date', 'Shopee Com'])
 
-    # เตรียมข้อมูล Lazada รายวัน
-    if not df_lazada.empty and 'Conversion Time' in df_lazada.columns:
-        df_lazada['Conversion Time'] = pd.to_datetime(df_lazada['Conversion Time'], errors='coerce')
-        lazada_daily = df_lazada.groupby(df_lazada['Conversion Time'].dt.date).agg({'Payout': 'sum'}).reset_index()
-        lazada_daily.rename(columns={'Conversion Time': 'Date', 'Payout': 'Lazada Com'}, inplace=True)
-        lazada_daily['Date'] = pd.to_datetime(lazada_daily['Date'])
-    else:
-        lazada_daily = pd.DataFrame(columns=['Date', 'Lazada Com'])
+        # เตรียมข้อมูล Lazada รายวัน
+        if not df_lazada.empty and 'Conversion Time' in df_lazada.columns:
+            df_lazada['Conversion Time'] = pd.to_datetime(df_lazada['Conversion Time'], errors='coerce')
+            lazada_daily = df_lazada.groupby(df_lazada['Conversion Time'].dt.date).agg({'Payout': 'sum'}).reset_index()
+            lazada_daily.rename(columns={'Conversion Time': 'Date', 'Payout': 'Lazada Com'}, inplace=True)
+            lazada_daily['Date'] = pd.to_datetime(lazada_daily['Date'])
+        else:
+            lazada_daily = pd.DataFrame(columns=['Date', 'Lazada Com'])
 
-    # รวมข้อมูลทั้งหมด
-    daily = pd.merge(ads_daily, shopee_daily, on='Date', how='outer')
-    daily = pd.merge(daily, lazada_daily, on='Date', how='outer')
-    daily = daily.fillna(0)
+        # รวมข้อมูลทั้งหมด
+        daily = pd.merge(ads_daily, shopee_daily, on='Date', how='outer')
+        daily = pd.merge(daily, lazada_daily, on='Date', how='outer')
+        daily = daily.fillna(0)
 
-    # คำนวณ Total Com และ Profit
-    daily['Total Com'] = daily['Shopee Com'] + daily['Lazada Com']
-    daily['Profit'] = daily['Total Com'] - daily['Ad Cost']
+        # คำนวณ Total Com และ Profit
+        daily['Total Com'] = daily['Shopee Com'] + daily['Lazada Com']
+        daily['Profit'] = daily['Total Com'] - daily['Ad Cost']
 
-    # วาดกราฟ
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.plot(daily['Date'], daily['Ad Cost'], label='Ad Cost', marker='o')
-    ax.plot(daily['Date'], daily['Total Com'], label='Total Commission', marker='s')
-    ax.plot(daily['Date'], daily['Profit'], label='Profit', marker='^')
-    ax.set_xlabel('วันที่')
-    ax.set_ylabel('จำนวนเงิน (บาท)')
-    ax.set_title("📊 รายวัน: Ad Cost vs Total Com vs Profit")
-    ax.legend()
-    ax.grid(True)
-    st.pyplot(fig)
+        # เรียงลำดับตามวันที่
+        daily = daily.sort_values('Date')
 
-except Exception as e:
-    st.warning(f"ไม่สามารถแสดงกราฟรายวันได้: {e}")
+        if not daily.empty:
+            # วาดกราฟ
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.plot(daily['Date'], daily['Ad Cost'], label='Ad Cost', marker='o', linewidth=2)
+            ax.plot(daily['Date'], daily['Total Com'], label='Total Commission', marker='s', linewidth=2)
+            ax.plot(daily['Date'], daily['Profit'], label='Profit', marker='^', linewidth=2)
+            ax.set_xlabel('วันที่')
+            ax.set_ylabel('จำนวนเงิน (บาท)')
+            ax.set_title("📊 รายวัน: Ad Cost vs Total Com vs Profit")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            
+            # ปรับแกน x ให้แสดงวันที่อย่างชัดเจน
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            
+            st.pyplot(fig)
+            
+            # แสดงตารางข้อมูลรายวัน
+            st.markdown("#### 📋 ข้อมูลรายวัน:")
+            daily_display = daily.copy()
+            daily_display['Date'] = daily_display['Date'].dt.strftime('%d/%m/%Y')
+            for col in ['Ad Cost', 'Shopee Com', 'Lazada Com', 'Total Com', 'Profit']:
+                daily_display[col] = daily_display[col].apply(lambda x: f"฿{x:,.2f}")
+            
+            st.dataframe(
+                daily_display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.TextColumn("📅 วันที่", width="medium"),
+                    "Ad Cost": st.column_config.TextColumn("💰 Ad Cost", width="medium"),
+                    "Shopee Com": st.column_config.TextColumn("🛒 Shopee Com", width="medium"),
+                    "Lazada Com": st.column_config.TextColumn("🛍️ Lazada Com", width="medium"),
+                    "Total Com": st.column_config.TextColumn("💎 Total Com", width="medium"),
+                    "Profit": st.column_config.TextColumn("📈 Profit", width="medium")
+                }
+            )
+        else:
+            st.info("ไม่มีข้อมูลรายวันเพื่อแสดงกราฟ")
+
+    except Exception as e:
+        st.warning(f"ไม่สามารถแสดงกราฟรายวันได้: {e}")
 
 else:
-    st.info("กรุณาอัปโหลดไฟล์อย่างน้อย Shopee หรือ Lazada Commission เพื่อเริ่มต้นการคำนวณ.")
+    st.info("กรุณาอัปโหลดไฟล์อย่างน้อย Shopee หรือ Lazada Commission เพื่อเริ่มต้นการคำนวณ")
