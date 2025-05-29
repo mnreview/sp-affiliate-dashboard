@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Affiliate Profit Dashboard", layout="wide")
-st.title("📊 Affiliate Profit Dashboard")
+st.title("📊 Affiliate Profit Dashboard V1.1")
 
 # ===================== CSS =====================
 st.markdown("""
