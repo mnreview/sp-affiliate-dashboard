@@ -57,19 +57,22 @@ df_shopee = df_lazada = df_ads = summary = pd.DataFrame()
 # ===================== Shopee =====================
 if commission_file:
     df_shopee = read_file(commission_file)
-    df_shopee = df_shopee.dropna(subset=['Sub_id4', 'คอมมิชชั่นสินค้าโดยรวม(฿)', 'รหัสการสั่งซื้อ'])
+    if not df_shopee.empty:
+        df_shopee = df_shopee.dropna(subset=['Sub_id4', 'คอมมิชชั่นสินค้าโดยรวม(฿)', 'รหัสการสั่งซื้อ'])
 
 # ===================== Lazada =====================
 if lzd_file:
     df_lazada = read_file(lzd_file)
-    df_lazada['Sub_id4'] = df_lazada['Sub ID 3'].fillna(df_lazada['Sub ID 1'])
-    df_lazada = df_lazada.dropna(subset=['Sub_id4', 'Payout'])
-    df_lazada = df_lazada[df_lazada['Sub_id4'] != 'paris']
+    if not df_lazada.empty:
+        df_lazada['Sub_id4'] = df_lazada['Sub ID 3'].fillna(df_lazada['Sub ID 1'])
+        df_lazada = df_lazada.dropna(subset=['Sub_id4', 'Payout'])
+        df_lazada = df_lazada[df_lazada['Sub_id4'] != 'paris']
 
 # ===================== Ads Data =====================
 if ads_file:
     df_ads = read_file(ads_file)
-    df_ads = df_ads.dropna(subset=['Ad name', 'Amount spent (THB)', 'Unique link clicks'])
+    if not df_ads.empty:
+        df_ads = df_ads.dropna(subset=['Ad name', 'Amount spent (THB)', 'Unique link clicks'])
 
 # ===================== FILTER OPTIONS SECTION =====================
 st.markdown("### 🔍 Filter Options")
@@ -78,8 +81,8 @@ col_filter1, col_filter2 = st.columns(2)
 
 # Platform filter
 with col_filter1:
-    shopee_platforms = df_shopee['Sub_id2'].dropna().unique().tolist() if not df_shopee.empty else []
-    lazada_platforms = df_lazada['Sub ID 2'].dropna().unique().tolist() if not df_lazada.empty else []
+    shopee_platforms = df_shopee['Sub_id2'].dropna().unique().tolist() if not df_shopee.empty and 'Sub_id2' in df_shopee.columns else []
+    lazada_platforms = df_lazada['Sub ID 2'].dropna().unique().tolist() if not df_lazada.empty and 'Sub ID 2' in df_lazada.columns else []
     platform_options = list(set(shopee_platforms + lazada_platforms))
     selected_platform = st.selectbox("🔎 กรองตามแพลตฟอร์ม (Sub_id2):", ['ทั้งหมด'] + platform_options)
 
@@ -124,17 +127,22 @@ if use_date_filter:
         date_start = date_end
 
 # ===================== APPLY FILTERS =====================
+# Create copies for filtering
+df_shopee_filtered = df_shopee.copy() if not df_shopee.empty else pd.DataFrame()
+df_lazada_filtered = df_lazada.copy() if not df_lazada.empty else pd.DataFrame()
+df_ads_filtered = df_ads.copy() if not df_ads.empty else pd.DataFrame()
+
 # กรองตามวันที่สำหรับ Shopee
-if not df_shopee.empty:
+if not df_shopee_filtered.empty:
     if use_date_filter and date_start and date_end:
-        if 'เวลาที่สั่งซื้อ' in df_shopee.columns:
-            df_shopee['เวลาที่สั่งซื้อ'] = pd.to_datetime(df_shopee['เวลาที่สั่งซื้อ'], errors='coerce')
-            df_shopee = df_shopee[
-                (df_shopee['เวลาที่สั่งซื้อ'].dt.date >= date_start) & 
-                (df_shopee['เวลาที่สั่งซื้อ'].dt.date <= date_end)
+        if 'เวลาที่สั่งซื้อ' in df_shopee_filtered.columns:
+            df_shopee_filtered['เวลาที่สั่งซื้อ'] = pd.to_datetime(df_shopee_filtered['เวลาที่สั่งซื้อ'], errors='coerce')
+            df_shopee_filtered = df_shopee_filtered[
+                (df_shopee_filtered['เวลาที่สั่งซื้อ'].dt.date >= date_start) & 
+                (df_shopee_filtered['เวลาที่สั่งซื้อ'].dt.date <= date_end)
             ]
     
-    df_shopee_grouped = df_shopee.groupby('Sub_id4').agg({
+    df_shopee_grouped = df_shopee_filtered.groupby('Sub_id4').agg({
         'คอมมิชชั่นสินค้าโดยรวม(฿)': 'sum',
         'รหัสการสั่งซื้อ': 'nunique'
     }).reset_index().rename(columns={
@@ -145,21 +153,21 @@ else:
     df_shopee_grouped = pd.DataFrame(columns=['Sub_id4', 'Shopee Com', 'Order Count'])
 
 # กรองตามวันที่และ Validity สำหรับ Lazada
-if not df_lazada.empty:
+if not df_lazada_filtered.empty:
     # กรองตาม Validity
     if selected_validity != 'ทั้งหมด':
-        df_lazada = df_lazada[df_lazada['Validity'] == selected_validity]
+        df_lazada_filtered = df_lazada_filtered[df_lazada_filtered['Validity'] == selected_validity]
     
     # กรองตามวันที่
     if use_date_filter and date_start and date_end:
-        if 'Conversion Time' in df_lazada.columns:
-            df_lazada['Conversion Time'] = pd.to_datetime(df_lazada['Conversion Time'], errors='coerce')
-            df_lazada = df_lazada[
-                (df_lazada['Conversion Time'].dt.date >= date_start) & 
-                (df_lazada['Conversion Time'].dt.date <= date_end)
+        if 'Conversion Time' in df_lazada_filtered.columns:
+            df_lazada_filtered['Conversion Time'] = pd.to_datetime(df_lazada_filtered['Conversion Time'], errors='coerce')
+            df_lazada_filtered = df_lazada_filtered[
+                (df_lazada_filtered['Conversion Time'].dt.date >= date_start) & 
+                (df_lazada_filtered['Conversion Time'].dt.date <= date_end)
             ]
     
-    df_lazada_grouped = df_lazada.groupby('Sub_id4').agg({
+    df_lazada_grouped = df_lazada_filtered.groupby('Sub_id4').agg({
         'Payout': 'sum',
         'Order Amount': 'sum'
     }).reset_index().rename(columns={
@@ -170,13 +178,13 @@ else:
     df_lazada_grouped = pd.DataFrame(columns=['Sub_id4', 'Lazada Com', 'LZD Order Amount'])
 
 # กรองตามวันที่สำหรับ Ads
-if not df_ads.empty:
+if not df_ads_filtered.empty:
     if use_date_filter and date_start and date_end:
-        if 'Day' in df_ads.columns:
-            df_ads['Day'] = pd.to_datetime(df_ads['Day'], errors='coerce')
-            df_ads = df_ads[
-                (df_ads['Day'].dt.date >= date_start) & 
-                (df_ads['Day'].dt.date <= date_end)
+        if 'Day' in df_ads_filtered.columns:
+            df_ads_filtered['Day'] = pd.to_datetime(df_ads_filtered['Day'], errors='coerce')
+            df_ads_filtered = df_ads_filtered[
+                (df_ads_filtered['Day'].dt.date >= date_start) & 
+                (df_ads_filtered['Day'].dt.date <= date_end)
             ]
 
 # ===================== Merge Shopee + Lazada =====================
@@ -195,10 +203,10 @@ elif not df_lazada_grouped.empty:
 if not summary.empty:
     summary['Total Com'] = summary.get('Shopee Com', 0) + summary.get('Lazada Com', 0)
 
-    if not df_ads.empty:
+    if not df_ads_filtered.empty:
         ad_costs, clicks = [], []
         for sub_id in summary['Sub_id4']:
-            matched = df_ads[df_ads['Ad name'].str.contains(sub_id, na=False)]
+            matched = df_ads_filtered[df_ads_filtered['Ad name'].str.contains(sub_id, na=False)]
             ad_costs.append(matched['Amount spent (THB)'].sum())
             clicks.append(matched['Unique link clicks'].sum())
         summary['Ad Cost'] = ad_costs
@@ -227,8 +235,8 @@ if not summary.empty:
 
     # ===== กรอง Sub_id2 =====
     if selected_platform != 'ทั้งหมด':
-        shopee_match = df_shopee[df_shopee['Sub_id2'] == selected_platform]['Sub_id4'].unique() if not df_shopee.empty else []
-        lazada_match = df_lazada[df_lazada['Sub ID 2'] == selected_platform]['Sub_id4'].unique() if not df_lazada.empty else []
+        shopee_match = df_shopee_filtered[df_shopee_filtered['Sub_id2'] == selected_platform]['Sub_id4'].unique() if not df_shopee_filtered.empty and 'Sub_id2' in df_shopee_filtered.columns else []
+        lazada_match = df_lazada_filtered[df_lazada_filtered['Sub ID 2'] == selected_platform]['Sub_id4'].unique() if not df_lazada_filtered.empty and 'Sub ID 2' in df_lazada_filtered.columns else []
         matched_subid4 = set(shopee_match).union(set(lazada_match))
         summary = summary[summary['Sub_id4'].isin(matched_subid4)]
 
@@ -330,10 +338,7 @@ if not summary.empty:
     
     # เรียงข้อมูล
     ascending = sort_order == 'น้อยไปมาก (Ascending)'
-    if sort_column != 'Sub_id4':
-        summary_sorted = summary_for_display.sort_values(by=sort_column, ascending=ascending)
-    else:
-        summary_sorted = summary_for_display.sort_values(by=sort_column, ascending=ascending)
+    summary_sorted = summary_for_display.sort_values(by=sort_column, ascending=ascending)
 
     # จัดรูปแบบตัวเลขสำหรับแสดงผล
     summary_display = summary_sorted.copy()
@@ -379,6 +384,75 @@ if not summary.empty:
         use_container_width=True,
         hide_index=True
     )
+
+    # ===================== TOP 10 สินค้า ค่าคอมสูงสุด =====================
+    st.markdown("### 🏆 สินค้าที่ค่าคอมสูงสุด (Top 10 Products)")
+
+    # เตรียมข้อมูล Shopee
+    top_shopee = pd.DataFrame()
+    if not df_shopee_filtered.empty and 'ชื่อรายการสินค้า' in df_shopee_filtered.columns:
+        top_shopee = df_shopee_filtered.groupby('ชื่อรายการสินค้า').agg({
+            'คอมมิชชั่นสินค้าโดยรวม(฿)': 'sum',
+            'มูลค่าซื้อ(฿)': 'sum'
+        }).reset_index().rename(columns={
+            'ชื่อรายการสินค้า': 'Product Name',
+            'คอมมิชชั่นสินค้าโดยรวม(฿)': 'Commission',
+            'มูลค่าซื้อ(฿)': 'Order Amount'
+        })
+        top_shopee['Platform'] = '🛍️ Shopee'  # เพิ่มคอลัมน์แพลตฟอร์ม
+
+    # เตรียมข้อมูล Lazada
+    top_lazada = pd.DataFrame()
+    if not df_lazada_filtered.empty and 'Product Name' in df_lazada_filtered.columns:
+        top_lazada = df_lazada_filtered.groupby('Product Name').agg({
+            'Payout': 'sum',
+            'Order Amount': 'sum'
+        }).reset_index().rename(columns={
+            'Product Name': 'Product Name',
+            'Payout': 'Commission',
+            'Order Amount': 'Order Amount'
+        })
+        top_lazada['Platform'] = '🛒 Lazada'  # เพิ่มคอลัมน์แพลตฟอร์ม
+
+    # รวมข้อมูล Shopee + Lazada
+    top_products = pd.concat([top_shopee, top_lazada], axis=0, ignore_index=True)
+    if not top_products.empty:
+        # จัดเรียงตามค่าคอมมิชชั่นโดยไม่รวมสินค้าที่ชื่อเหมือนกัน (เพื่อดูแยกแพลตฟอร์ม)
+        top_products = top_products.sort_values(by='Commission', ascending=False).head(10)
+        
+        # แสดงผล
+        top_products_display = top_products.copy()
+        top_products_display['Commission'] = top_products_display['Commission'].apply(lambda x: f"฿{x:,.2f}")
+        top_products_display['Order Amount'] = top_products_display['Order Amount'].apply(lambda x: f"{int(x)}")
+
+        st.dataframe(
+            top_products_display,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Product Name": st.column_config.TextColumn("📦 ชื่อสินค้า", width="large"),
+                "Commission": st.column_config.TextColumn("💰 ค่าคอมมิชชั่นรวม", width="medium"),
+                "Order Amount": st.column_config.TextColumn("📊 ยอดขาย", width="medium"),
+                "Platform": st.column_config.TextColumn("🏪 แพลตฟอร์ม", width="small")
+            }
+        )
+        
+        # แสดงสถิติสรุป
+        platform_counts = top_products['Platform'].value_counts()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            shopee_count = platform_counts.get('🛍️ Shopee', 0)
+            st.metric("🛍️ Shopee ใน Top 10", shopee_count)
+        with col2:
+            lazada_count = platform_counts.get('🛒 Lazada', 0)
+            st.metric("🛒 Lazada ใน Top 10", lazada_count)
+        with col3:
+            total_commission = top_products['Commission'].sum()
+            st.metric("💰 ค่าคอมรวม Top 10", f"฿{total_commission:,.2f}")
+
+    else:
+        st.info("ไม่มีข้อมูลสินค้าเพียงพอสำหรับการจัดอันดับค่าคอมสูงสุด")
 
     # ===================== กราฟรายวัน: Ad Cost, Shopee Com, Lazada Com, Profit =====================
     st.markdown("### 📈 กราฟรายวัน: Ad Cost, Total Commission และ Profit")
@@ -455,6 +529,31 @@ if not summary.empty:
                 hide_index=True,
                 column_config={
                     "Date": st.column_config.TextColumn("📅 วันที่", width="medium"),
+                    "Ad Cost": st.column_config.TextColumn("💰 Ad Cost", width="medium"),
+                    "Shopee Com": st.column_config.TextColumn("🛒 Shopee Com", width="medium"),
+                    "Lazada Com": st.column_config.TextColumn("🛍️ Lazada Com", width="medium"),
+                    "Total Com": st.column_config.TextColumn("💎 Total Com", width="medium"),
+                    "Profit": st.column_config.TextColumn("📈 Profit", width="medium")
+                }
+            )
+            
+            # เพิ่มแถวรวมยอดสำหรับตารางรายวัน
+            st.markdown("#### 📊 สรุปรวม (รายวัน):")
+            daily_total = pd.DataFrame([{
+                'รายการ': 'รวมทั้งหมด',
+                'Ad Cost': f"฿{daily['Ad Cost'].sum():,.2f}",
+                'Shopee Com': f"฿{daily['Shopee Com'].sum():,.2f}",
+                'Lazada Com': f"฿{daily['Lazada Com'].sum():,.2f}",
+                'Total Com': f"฿{daily['Total Com'].sum():,.2f}",
+                'Profit': f"฿{daily['Profit'].sum():,.2f}"
+            }])
+            
+            st.dataframe(
+                daily_total,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "รายการ": st.column_config.TextColumn("📋 รายการ", width="medium"),
                     "Ad Cost": st.column_config.TextColumn("💰 Ad Cost", width="medium"),
                     "Shopee Com": st.column_config.TextColumn("🛒 Shopee Com", width="medium"),
                     "Lazada Com": st.column_config.TextColumn("🛍️ Lazada Com", width="medium"),
