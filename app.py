@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Affiliate Profit Dashboard", layout="wide")
-st.title("📊 Affiliate Profit Dashboard V1.1")
+st.title("📊 Affiliate Profit Dashboard V1.2")
 
 # ===================== CSS =====================
 st.markdown("""
@@ -303,9 +303,9 @@ if not summary.empty:
     st.markdown("---")  # เส้นแบ่ง
 
     # ===================== จัดเรียงคอลัมน์และเตรียมข้อมูล =====================
-    desired_order = ['Sub_id4', 'Ad Cost', 'Link Click', 'Order Count', 'Shopee Com',
-                     'Lazada Com', 'LZD Order Amount', 'Total Com', 'Profit', 'ROI (%)',
-                     'CPC(Link)', 'Cost Per Order(Shopee)', 'Amount Per AdCost(LZD)']
+    desired_order = ['Sub_id4', 'Ad Cost', 'Shopee Com', 'Lazada Com', 'Total Com',
+                 'Profit', 'ROI (%)', 'Link Click', 'Order Count', 'LZD Order Amount',
+                 'CPC(Link)', 'Cost Per Order(Shopee)', 'Amount Per AdCost(LZD)']
     summary = summary[desired_order]
 
     # เก็บข้อมูลดิบไว้สำหรับการเรียงลำดับ
